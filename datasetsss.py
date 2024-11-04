@@ -24,10 +24,13 @@ class MyDataset(Dataset):
             self.lms_path_list.append(lms_path)
         
         if self.mode == "wenet":
+            self.stride = 4
             self.audio_feats = np.load(img_dir+"/aud_wenet.npy")
-        if self.mode == "hubert":
+        elif self.mode == "hubert":
+            self.stride = 8
             self.audio_feats = np.load(img_dir+"/aud_hu.npy")
-            
+        else:
+            raise ValueError("Only support mode wenet hubert!")
         self.audio_feats = self.audio_feats.astype(np.float32)
         print(img_dir)
         print(self.audio_feats.shape)
@@ -39,8 +42,8 @@ class MyDataset(Dataset):
         return self.audio_feats.shape[0]-1
     
     def get_audio_features(self, features, index):
-        left = index - 8
-        right = index + 8
+        left = index - self.stride
+        right = index + self.stride
         pad_left = 0
         pad_right = 0
         if left < 0:
@@ -69,9 +72,9 @@ class MyDataset(Dataset):
             # pad may be longer than auds, so do not use zeros_like
             auds = torch.cat([torch.zeros(pad_left, *auds.shape[1:], device=auds.device, dtype=auds.dtype), auds], dim=0)
         return auds
-    
-    def process_img(self, img, lms_path, img_ex, lms_path_ex):
 
+    @staticmethod
+    def get_coord_from_lms(lms_path):  # use pfld
         lms_list = []
         with open(lms_path, "r") as f:
             lines = f.read().splitlines()
@@ -86,27 +89,34 @@ class MyDataset(Dataset):
         xmax = lms[31][0]
         width = xmax - xmin
         ymax = ymin + width
-        
+        return xmin, ymin, xmax, ymax
+
+
+    def process_img(self, img, lms_path, img_ex, lms_path_ex, openface_lms_path=""):
+
+        xmin, ymin, xmax, ymax = self.get_coord_from_lms(lms_path)
         crop_img = img[ymin:ymax, xmin:xmax]
         crop_img = cv2.resize(crop_img, (168, 168), cv2.INTER_AREA)
         img_real = crop_img[4:164, 4:164].copy()
         img_real_ori = img_real.copy()
         img_masked = cv2.rectangle(img_real,(5,5,150,145),(0,0,0),-1)
-        
-#         lms_list = []
-#         with open(lms_path_ex, "r") as f:
-#             lines = f.read().splitlines()
-#             for line in lines:
-#                 arr = line.split(" ")
-#                 arr = np.array(arr, dtype=np.float32)
-#                 lms_list.append(arr)
-#         lms = np.array(lms_list, dtype=np.int32)
-#         xmin = lms[1][0]
-#         ymin = lms[29][1]
-        
-#         xmax = lms[15][0]
-#         width = xmax - xmin
-#         ymax = ymin + width
+
+        # 如果采用openface的landmark,则使用以下代码解析
+        # lms_list = []
+        # with open(openface_lms_path, "r") as f:
+        #     lines = f.read().splitlines()
+        #     for line in lines:
+        #         arr = line.split(" ")
+        #         arr = np.array(arr, dtype=np.float32)
+        #         lms_list.append(arr)
+        # lms = np.array(lms_list, dtype=np.int32)
+        # xmin = lms[1][0]
+        # ymin = lms[29][1]
+        #
+        # xmax = lms[15][0]
+        # width = xmax - xmin
+        # ymax = ymin + width
+        xmin, ymin, xmax, ymax = self.get_coord_from_lms(lms_path_ex)
         crop_img = img_ex[ymin:ymax, xmin:xmax]
         crop_img = cv2.resize(crop_img, (168, 168), cv2.INTER_AREA)
         img_real_ex = crop_img[4:164, 4:164].copy()
@@ -118,7 +128,7 @@ class MyDataset(Dataset):
         img_real_ex_T = torch.from_numpy(img_real_ex / 255.0)
         img_real_T = torch.from_numpy(img_real_ori / 255.0)
         img_masked_T = torch.from_numpy(img_masked / 255.0)
-        img_concat_T = torch.cat([img_real_ex_T, img_masked_T], axis=0)
+        img_concat_T = torch.cat([img_real_ex_T, img_masked_T], dim=0)
 
         return img_concat_T, img_real_T
 
@@ -134,7 +144,7 @@ class MyDataset(Dataset):
         audio_feat = self.get_audio_features(self.audio_feats, idx) 
         
         if self.mode == "wenet":
-            audio_feat = audio_feat.reshape(256,16,32)
+            audio_feat = audio_feat.reshape(128,16,32)  # (256,16,32)
         if self.mode == "hubert":
             audio_feat = audio_feat.reshape(32,32,32)
         

@@ -1,3 +1,5 @@
+import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from transformers import Wav2Vec2Processor, HubertModel
 import soundfile as sf
 import numpy as np

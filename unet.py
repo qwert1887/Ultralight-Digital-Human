@@ -82,7 +82,7 @@ class Up(nn.Module):
         diffY = x2.shape[2] - x1.shape[2]
         diffX = x2.shape[3] - x1.shape[3]
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
-        x = torch.cat([x1, x2], axis=1)
+        x = torch.cat([x1, x2], dim=1)
         
         return self.conv(x)
 
@@ -96,8 +96,9 @@ class OutConv(nn.Module):
 class AudioConvWenet(nn.Module):
     def __init__(self):
         super(AudioConvWenet, self).__init__()
-        # ch = [16, 32, 64, 128, 256]   # if you want to run this model on a mobile device, use this. 
-        ch = [32, 64, 128, 256, 512]
+        # ch = [16, 32, 64, 128, 256]   # if you want to run this model on a mobile device, use this.
+        ch = [16, 32, 64, 128, 512]   # wenet
+        # ch = [32, 64, 128, 256, 512]
         self.conv1 = InvertedResidual(ch[3], ch[3], stride=1, use_res_connect=True, expand_ratio=2)
         self.conv2 = InvertedResidual(ch[3], ch[3], stride=1, use_res_connect=True, expand_ratio=2)
         
@@ -132,7 +133,7 @@ class AudioConvWenet(nn.Module):
 class AudioConvHubert(nn.Module):
     def __init__(self):
         super(AudioConvHubert, self).__init__()
-        # ch = [16, 32, 64, 128, 256]   # if you want to run this model on a mobile device, use this. 
+        # ch = [16, 32, 64, 128, 256]   # if you want to run this model on a mobile device, use this.
         ch = [32, 64, 128, 256, 512]
         self.conv1 = InvertedResidual(32, ch[1], stride=1, use_res_connect=False, expand_ratio=2)
         self.conv2 = InvertedResidual(ch[1], ch[2], stride=1, use_res_connect=False, expand_ratio=2)
@@ -169,7 +170,7 @@ class Model(nn.Module):
     def __init__(self,n_channels=6, mode='hubert'):
         super(Model, self).__init__()
         self.n_channels = n_channels   #BGR
-        # ch = [16, 32, 64, 128, 256]  # if you want to run this model on a mobile device, use this. 
+        # ch = [16, 32, 64, 128, 256]  # if you want to run this model on a mobile device, use this.
         ch = [32, 64, 128, 256, 512]
         
         if mode=='hubert':
@@ -204,7 +205,7 @@ class Model(nn.Module):
         x5 = self.down4(x4)
         
         audio_feat  = self.audio_model(audio_feat)
-        x5 = torch.cat([x5, audio_feat], axis=1)
+        x5 = torch.cat([x5, audio_feat], dim=1)
         x5 = self.fuse_conv(x5)
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
@@ -268,6 +269,7 @@ if __name__ == '__main__':
                         # dynamic_axes=dynamic_axes,
                         # example_outputs=torch_out,
                         opset_version=11,
+                        # do_constant_folding=False,
                         export_params=True)
     check_onnx(torch_out, img, audio)
 

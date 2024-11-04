@@ -23,12 +23,16 @@ class Dataset(object):
             lms_path = os.path.join(dataset_dir+"/landmarks/", str(i)+".lms")
             self.img_path_list.append(img_path)
             self.lms_path_list.append(lms_path)
-                
-        if mode=="wenet":
-            audio_feats_path = dataset_dir+"/aud_wenet.npy"
-        if mode=="hubert":
-            audio_feats_path = dataset_dir+"/aud_hu.npy"
         self.mode = mode
+        if self.mode=="wenet":
+            self.stride = 4  # stride for audio features
+            audio_feats_path = dataset_dir+"/aud_wenet.npy"
+        elif self.mode=="hubert":
+            self.stride = 8  # stride for audio features
+            audio_feats_path = dataset_dir+"/aud_hu.npy"
+        else:
+            raise ValueError("Mode must be wenet or hubert")
+        # self.mode = mode
         self.audio_feats = np.load(audio_feats_path)
         self.audio_feats = self.audio_feats.astype(np.float32)
         
@@ -38,8 +42,8 @@ class Dataset(object):
 
     def get_audio_features(self, features, index):
         
-        left = index - 8
-        right = index + 8
+        left = index - self.stride  # default 8
+        right = index + self.stride  # default 8
         pad_left = 0
         pad_right = 0
         if left < 0:
@@ -94,9 +98,12 @@ class Dataset(object):
         # audio_feat = self.audio_feats[idx]
         # print(audio_feat.shape)
         # asd
-        
-        # audio_feat = audio_feat.reshape(128,16,32)
-        audio_feat = audio_feat.reshape(32,32,32)
+        if self.mode == "wenet":
+            audio_feat = audio_feat.reshape(128,16,32)   # wenet
+        elif self.mode == "hubert":
+            audio_feat = audio_feat.reshape(32,32,32)    # hubert
+        else:
+            raise ValueError("Only support mode wenet and hubert!")
         y = torch.ones(1).float()
         
         return img_real_T, audio_feat, y
@@ -215,7 +222,7 @@ def cosine_loss(a, v, y):
 
     return loss
     
-def train(save_dir, dataset_dir, mode):
+def train(save_dir, dataset_dir, mode, resume_cpkt=""):
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
         
@@ -224,6 +231,9 @@ def train(save_dir, dataset_dir, mode):
         train_dataset, batch_size=16, shuffle=True,
         num_workers=4)
     model = SyncNet_color(mode).cuda()
+    if resume_cpkt != "":
+        # print(torch.load(os.path.join(save_dir, resume_cpkt)))
+        model.load_state_dict(torch.load(os.path.join(save_dir, resume_cpkt)))
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad],
                            lr=0.001)
     for epoch in range(40):
@@ -245,9 +255,10 @@ def train(save_dir, dataset_dir, mode):
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--save_dir', type=str)
-    parser.add_argument('--dataset_dir', type=str)
-    parser.add_argument('--asr', type=str)
+    parser.add_argument('--save_dir', type=str, default="syncnet_ytt_1030")
+    parser.add_argument('--dataset_dir', type=str, default="dataset/ytt_1030")
+    parser.add_argument('--asr', type=str, default="hubert")
+    parser.add_argument('--resume', type=str, default='')
     opt = parser.parse_args()
     
     # syncnet = SyncNet_color(mode=opt.asr)
@@ -256,4 +267,4 @@ if __name__ == "__main__":
     # audio = torch.zeros([1,16,32,32])
     # audio_embedding, face_embedding = syncnet(img, audio)
     # print(audio_embedding.shape, face_embedding.shape)
-    train(opt.save_dir, opt.dataset_dir, opt.asr)
+    train(opt.save_dir, opt.dataset_dir, opt.asr, resume_cpkt=opt.resume)

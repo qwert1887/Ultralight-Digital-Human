@@ -1,6 +1,9 @@
 import argparse
-import os, sys
+import os
+import sys
+import onnxruntime
 import cv2
+import onnx
 import torch
 import numpy as np
 import torch.nn as nn
@@ -70,12 +73,19 @@ else:
 step_stride = 0
 img_idx = 0
 
-net = Model(6, mode).cuda()
-state_dict = torch.load(checkpoint)
-if "model" in state_dict:
-    state_dict = state_dict["model"]
-net.load_state_dict(state_dict)
-net.eval()
+# net = Model(6, mode).cuda()
+# net.load_state_dict(torch.load(checkpoint))
+# net.eval()
+onnx_path = "dihuman.onnx"
+onnx_model = onnx.load(onnx_path)
+# providers = ["CUDAExecutionProvider"]
+trt_ep_options = {
+    "device_id": 0,
+    "trt_engine_cache_enable": True,
+    "trt_engine_cache_path": os.path.dirname(os.path.abspath(__file__)) + os.sep + "trt_cache"
+}
+# ort_session = onnxruntime.InferenceSession(onnx_path, providers=[('TensorrtExecutionProvider', trt_ep_options), 'CUDAExecutionProvider'])
+ort_session = onnxruntime.InferenceSession(onnx_path, providers=['CUDAExecutionProvider'])
 for i in tqdm(range(audio_feats.shape[0]), total=audio_feats.shape[0], ncols=100, desc="Generating"):
     if img_idx>len_img - 1:
         step_stride = -1
@@ -123,14 +133,20 @@ for i in tqdm(range(audio_feats.shape[0]), total=audio_feats.shape[0], ncols=100
     audio_feat = audio_feat[None]
     audio_feat = audio_feat.cuda()
     img_concat_T = img_concat_T.cuda()
-    
-    with torch.no_grad():
-        # s_time = time.time()
-        pred = net(img_concat_T, audio_feat)[0]
-        # print(time.time() - s_time)
-        # print(img_concat_T.shape, audio_feat.shape, pred.shape,pred.dtype)
-    pred = pred.cpu().numpy().transpose(1,2,0)*255
+
+    ort_inputs = {ort_session.get_inputs()[0].name: img_concat_T.cpu().numpy(),
+                  ort_session.get_inputs()[1].name: audio_feat.cpu().numpy()}
+    s_time = time.time()
+    ort_outs = ort_session.run(None, ort_inputs)
+    print(time.time() - s_time)
+    pred = ort_outs[0].squeeze()
+    pred = pred.transpose(1, 2, 0) * 255
     pred = np.array(pred, dtype=np.uint8)
+    # with torch.no_grad():
+    #     s_time = time.time()
+    #     pred = net(img_concat_T, audio_feat)[0]
+    # pred = pred.cpu().numpy().transpose(1,2,0)*255
+    # pred = np.array(pred, dtype=np.uint8)
     # print("cost:", time.time() - s_time)
     # cv2.imwrite("test_2.jpg", pred)
     # sys.exit()

@@ -492,7 +492,9 @@ if __name__ == '__main__':
 
     import soundfile as sf
     stream, sample_rate = sf.read(audio_path) # [T*sample_rate,] float64
-    
+
+    if stream.ndim ==2:  # 双通道只使用第一通道
+        stream = stream[:, 0]
     # stream = stream[:,0]
     waveform = stream.astype(np.float32)*32767
     waveform = waveform.astype(np.int16)
