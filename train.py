@@ -23,8 +23,9 @@ def get_args():
     parser.add_argument('--dataset_dir', type=str)
     parser.add_argument('--save_dir', type=str, help="trained model save path.")
     parser.add_argument('--see_res', action='store_true')
+    parser.add_argument('--preload', action='store_true', help="it determines if we preload the data into memory")
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--batchsize', type=int, default=16)  # 32 default
+    parser.add_argument('--batchsize', type=int, default=16)  # default 32
     parser.add_argument('--lr', type=float, default=0.001)  # default 0.001
     parser.add_argument('--asr', type=str, default="hubert")
     parser.add_argument('--resume_ckpt', type=str, default="")
@@ -75,7 +76,11 @@ def train(net, epoch, batch_size, lr):
             raise ValueError("Using syncnet, you need to set 'syncnet_checkpoint'.Please check README")
             
         syncnet = SyncNet_color(args.asr).eval().cuda()
-        syncnet.load_state_dict(torch.load(args.syncnet_checkpoint))
+        sync_dict_state = torch.load(args.syncnet_checkpoint)
+        if "model" in sync_dict_state:
+            syncnet.load_state_dict(sync_dict_state["model"])
+        else:
+            syncnet.load_state_dict(sync_dict_state)
     save_dir= args.save_dir
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -83,19 +88,20 @@ def train(net, epoch, batch_size, lr):
     dataset_list = []
     dataset_dir_list = [args.dataset_dir]
     for dataset_dir in dataset_dir_list:
-        dataset = MyDataset(dataset_dir, args.asr)
+        dataset = MyDataset(dataset_dir, args.asr, preload=args.preload)
         train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4)
         dataloader_list.append(train_dataloader)
         dataset_list.append(dataset)
     start_epoch = 0
-    start_lr = lr
+    # start_lr = lr
     avg_loss = 0.0
     optimizer = optim.Adam(net.parameters(), lr=lr)
     if args.resume_ckpt != "":
         if not os.path.isfile(args.resume_ckpt):
             raise ValueError(f"Checkpoint {args.resume_ckpt} doesn't exist!")
         checkpoint_dict = torch.load(args.resume_ckpt, map_location=device)
-        if 'model' not in checkpoint_dict:
+        # print(checkpoint_dict.keys())
+        if 'model' in checkpoint_dict:
             missing_keys, unexpected_keys = net.load_state_dict(checkpoint_dict['model'], strict=False)
             if len(missing_keys) > 0 or len(unexpected_keys) > 0:
                 print(f"missing keys: {missing_keys}, unexpected keys: {unexpected_keys}")
@@ -104,19 +110,20 @@ def train(net, epoch, batch_size, lr):
             optimizer.load_state_dict(checkpoint_dict['optimizer'])
             print("[INFO] loaded optimizer.")
         start_epoch = checkpoint_dict['epoch']
-        start_lr = checkpoint_dict['lr']
+        lr = checkpoint_dict['lr']
         avg_loss = checkpoint_dict['avg_loss']
     criterion = nn.L1Loss()  # default
     # criterion = nn.MSELoss()
     # criterion = nn.SmoothL1Loss()
     lr_stop_reduce = True
-    for e in range(epoch+1):
+    for e in range(1, epoch+1):
+        e = e + start_epoch
         net.train()
         random_i = random.randint(0, len(dataset_dir_list)-1)
         dataset = dataset_list[random_i]
         train_dataloader = dataloader_list[random_i]
         
-        with tqdm(total=len(dataset), ncols=100, desc=f'Epoch {e}/{epoch}', unit=' img') as p:
+        with tqdm(total=len(dataset), ncols=100, desc=f'Epoch {e}/{epoch+start_epoch}', unit=' img') as p:
             loss_list = []
             if e != 0 and e % 20 == 0 and not lr_stop_reduce:
                 lr = max(lr * 0.5, 1e-4)
@@ -136,7 +143,7 @@ def train(net, epoch, batch_size, lr):
                 loss_PerceptualLoss = content_loss.get_loss(preds, labels)
                 loss_pixel = criterion(preds, labels)
                 if use_syncnet:
-                    loss = loss_pixel + loss_PerceptualLoss*0.01 + 10*sync_loss
+                    loss = loss_pixel + loss_PerceptualLoss*0.01 + 10*sync_loss  # default 10*sync_loss
                 else:
                     loss = loss_pixel + loss_PerceptualLoss*0.01
                 loss_value = loss.item()
@@ -148,10 +155,9 @@ def train(net, epoch, batch_size, lr):
                 p.update(imgs.shape[0])
             average_loss = sum(loss_list) / len(loss_list)
             p.set_postfix(**{'loss (batch)': average_loss, "lr": lr})
-                
         if e % 10 == 0:
             state = {
-                'epoch': epoch,
+                'epoch': e,
                 'avg_loss': average_loss,
                 'lr': lr,
                 "model": net.state_dict(),

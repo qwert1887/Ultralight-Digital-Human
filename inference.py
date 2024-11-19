@@ -29,6 +29,7 @@ audio_feat_path = args.audio_feat
 mode = args.asr
 
 def get_audio_features(features, index):
+    # print(f"features:{features.shape}")
     if mode == "wenet":
         stride = 4
     elif mode == "hubert":
@@ -50,9 +51,12 @@ def get_audio_features(features, index):
         auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0)
     if pad_right > 0:
         auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
+    # print(f"auds:{auds.shape}")
+    # sys.exit(0)
     return auds
 
 audio_feats = np.load(audio_feat_path)
+# print(f"audio_feats shape:{audio_feats.shape}")
 img_dir = os.path.join(dataset_dir, "full_body_img/")
 lms_dir = os.path.join(dataset_dir, "landmarks/")
 len_img = len(os.listdir(img_dir)) - 1
@@ -114,8 +118,10 @@ for i in tqdm(range(audio_feats.shape[0]), total=audio_feats.shape[0], ncols=100
     img_real_ex_T = torch.from_numpy(img_real_ex / 255.0)
     img_masked_T = torch.from_numpy(img_masked / 255.0)
     img_concat_T = torch.cat([img_real_ex_T, img_masked_T], dim=0)[None]
-    
+    # print(f"before audio_feats shape:{audio_feats.shape}")  # ==>before audio_feats shape:(332, 2, 1024)
     audio_feat = get_audio_features(audio_feats, i)
+    # print(f"after audio_feat shape:{audio_feat.shape}")  # ==>after audio_feat shape:torch.Size([16, 2, 1024])
+    # sys.exit(0)
     if mode=="hubert":
         audio_feat = audio_feat.reshape(32,32,32)
     elif mode=="wenet":

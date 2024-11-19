@@ -55,12 +55,57 @@ def get_audio_features(features, index):
         auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
     return auds
 
+
+def get_coord_from_lms(lms_path):  # use pfld
+    lms_list = []
+    with open(lms_path, "r") as f:
+        lines = f.read().splitlines()
+        for line in lines:
+            arr = line.split(" ")
+            arr = np.array(arr, dtype=np.float32)
+            lms_list.append(arr)
+    lms = np.array(lms_list, dtype=np.int32)
+    xmin = lms[1][0]
+    ymin = lms[52][1]
+
+    xmax = lms[31][0]
+    width = xmax - xmin
+    ymax = ymin + width
+    return xmin, ymin, xmax, ymax
+
+
 audio_feats = np.load(audio_feat_path)
 img_dir = os.path.join(dataset_dir, "full_body_img/")
 lms_dir = os.path.join(dataset_dir, "landmarks/")
-len_img = len(os.listdir(img_dir)) - 1
-exm_img = cv2.imread(img_dir+"0.jpg")
-h, w = exm_img.shape[:2]
+
+video_path = "dataset/zyz_0128/0128_raw_1080p_2.mp4"
+cap = cv2.VideoCapture(video_path)
+if not cap.isOpened():
+    raise FileNotFoundError(f"video file {video_path} not found")
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+print(f"w: {w}, h: {h}, total_frames: {total_frames}")
+frames_list = []
+lms_list = []
+p_bar = tqdm(total=total_frames, ncols=100, desc="")
+lms_idx = 0
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    frames_list.append(frame)
+    lms_list.append(get_coord_from_lms(os.path.join(lms_dir, f"{lms_idx}.lms")))
+    p_bar.update(1)
+    lms_idx += 1
+p_bar.close()
+assert len(frames_list) == len(lms_list), "frames_list and lms_list have different lengths"
+
+len_img = total_frames
+# len_img = len(os.listdir(img_dir)) - 1
+#
+# exm_img = cv2.imread(img_dir+"0.jpg")
+# h, w = exm_img.shape[:2]
 
 if mode=="hubert":
     # video_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc('M','J','P', 'G'), 25, (w, h))
@@ -76,7 +121,9 @@ img_idx = 0
 # net = Model(6, mode).cuda()
 # net.load_state_dict(torch.load(checkpoint))
 # net.eval()
-onnx_path = "dihuman.onnx"
+# onnx_path = "dihuman.onnx"
+# onnx_path = "zyz_0128_model.onnx"
+onnx_path = "zyz_0128_model_fp32.onnx"
 onnx_model = onnx.load(onnx_path)
 # providers = ["CUDAExecutionProvider"]
 trt_ep_options = {
@@ -92,24 +139,27 @@ for i in tqdm(range(audio_feats.shape[0]), total=audio_feats.shape[0], ncols=100
     if img_idx<1:
         step_stride = 1
     img_idx += step_stride
-    img_path = img_dir + str(img_idx)+'.jpg'
-    lms_path = lms_dir + str(img_idx)+'.lms'
-    
-    img = cv2.imread(img_path)
-    lms_list = []
-    with open(lms_path, "r") as f:
-        lines = f.read().splitlines()
-        for line in lines:
-            arr = line.split(" ")
-            arr = np.array(arr, dtype=np.float32)
-            lms_list.append(arr)
-    lms = np.array(lms_list, dtype=np.int32)
-    xmin = lms[1][0]
-    ymin = lms[52][1]
+    # img_path = img_dir + str(img_idx)+'.jpg'
+    # lms_path = lms_dir + str(img_idx)+'.lms'
+    #
+    # img = cv2.imread(img_path)
+    # lms_list = []
+    # with open(lms_path, "r") as f:
+    #     lines = f.read().splitlines()
+    #     for line in lines:
+    #         arr = line.split(" ")
+    #         arr = np.array(arr, dtype=np.float32)
+    #         lms_list.append(arr)
+    # lms = np.array(lms_list, dtype=np.int32)
+    # xmin = lms[1][0]
+    # ymin = lms[52][1]
+    #
+    # xmax = lms[31][0]
+    # width = xmax - xmin
+    # ymax = ymin + width
 
-    xmax = lms[31][0]
-    width = xmax - xmin
-    ymax = ymin + width
+    img = frames_list[img_idx].copy()
+    xmin, ymin, xmax, ymax = lms_list[img_idx]
     crop_img = img[ymin:ymax, xmin:xmax]
     h, w = crop_img.shape[:2]
     crop_img = cv2.resize(crop_img, (168, 168), cv2.INTER_AREA)
@@ -136,9 +186,9 @@ for i in tqdm(range(audio_feats.shape[0]), total=audio_feats.shape[0], ncols=100
 
     ort_inputs = {ort_session.get_inputs()[0].name: img_concat_T.cpu().numpy(),
                   ort_session.get_inputs()[1].name: audio_feat.cpu().numpy()}
-    s_time = time.time()
+    # s_time = time.time()
     ort_outs = ort_session.run(None, ort_inputs)
-    print(time.time() - s_time)
+    # print(time.time() - s_time)
     pred = ort_outs[0].squeeze()
     pred = pred.transpose(1, 2, 0) * 255
     pred = np.array(pred, dtype=np.uint8)

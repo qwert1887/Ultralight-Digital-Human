@@ -9,6 +9,7 @@ from torch import optim
 import random
 import argparse
 
+from tqdm import tqdm
 
 
 class Dataset(object):
@@ -89,11 +90,11 @@ class Dataset(object):
         img = cv2.imread(self.img_path_list[idx])
         lms_path = self.lms_path_list[idx]
         
-        ex_int = random.randint(0, self.__len__()-1)
-        img_ex = cv2.imread(self.img_path_list[ex_int])
-        lms_path_ex = self.lms_path_list[ex_int]
+        # ex_int = random.randint(0, self.__len__()-1)
+        # img_ex = cv2.imread(self.img_path_list[ex_int])
+        # lms_path_ex = self.lms_path_list[ex_int]
         
-        img_real_T = self.process_img(img, lms_path, img_ex, lms_path_ex)
+        img_real_T = self.process_img(img, lms_path, img_ex="", lms_path_ex="")
         audio_feat = self.get_audio_features(self.audio_feats, idx) # 
         # audio_feat = self.audio_feats[idx]
         # print(audio_feat.shape)
@@ -231,24 +232,52 @@ def train(save_dir, dataset_dir, mode, resume_cpkt=""):
         train_dataset, batch_size=16, shuffle=True,
         num_workers=4)
     model = SyncNet_color(mode).cuda()
-    if resume_cpkt != "":
-        # print(torch.load(os.path.join(save_dir, resume_cpkt)))
-        model.load_state_dict(torch.load(os.path.join(save_dir, resume_cpkt)))
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad],
                            lr=0.001)
-    for epoch in range(40):
+    start_epoch = 0
+    if resume_cpkt != "":
+        # print(torch.load(os.path.join(save_dir, resume_cpkt)))
+        cpkt_state_dict = torch.load(resume_cpkt)
+        if "model" in cpkt_state_dict:
+            model.load_state_dict(cpkt_state_dict["model"])
+            print("Loaded model!")
+        if "optimizer" in cpkt_state_dict:
+            optimizer.load_state_dict(cpkt_state_dict["optimizer"])
+            print("Loaded optimizer!")
+        if "lr" in cpkt_state_dict:
+            lr = cpkt_state_dict["lr"]
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+        if "epoch" in cpkt_state_dict:
+            start_epoch = cpkt_state_dict["epoch"]
+
+    for epoch in range(1, 51):
+        epoch += start_epoch
+        p_bar = tqdm(total=len(train_dataset), ncols=100, desc=f"Sync Epoch {epoch}", unit=" imgs")
+        loss_list = []
         for batch in train_data_loader:
             imgT, audioT, y = batch
             imgT = imgT.cuda()
             audioT = audioT.cuda()
+            # print(imgT.shape, audioT.shape)
             y = y.cuda()
             audio_embedding, face_embedding = model(imgT, audioT)
             loss = cosine_loss(audio_embedding, face_embedding, y)
+            # optimizer.zero_grad(set_to_none=True)  # ??置零
             loss.backward()
             optimizer.step()
-        print(epoch, loss.item())
-        torch.save(model.state_dict(), os.path.join(save_dir, str(epoch)+'.pth'))
-            
+            loss_value = loss.item()
+            loss_list.append(loss_value)
+            p_bar.set_postfix(**{'loss': loss_value})
+            p_bar.update(imgT.size(0))
+        p_bar.set_postfix(**{'loss': sum(loss_list) / len(loss_list)})
+        p_bar.close()
+        # print(epoch, loss.item())
+        if epoch % 5 == 0:
+            ckpt_state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict()}
+            # torch.save(model.state_dict(), os.path.join(save_dir, str(epoch)+'.pth'))
+            torch.save(ckpt_state, os.path.join(save_dir, str(epoch)+'.pth'))
+
             
     
     

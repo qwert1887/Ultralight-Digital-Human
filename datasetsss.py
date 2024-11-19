@@ -7,21 +7,30 @@ import random
 
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+
 
 class MyDataset(Dataset):
     
-    def __init__(self, img_dir, mode):
+    def __init__(self, img_dir, mode, preload):  # preload data to memory
     
         self.img_path_list = []
         self.lms_path_list = []
+        self.img_arr_list = []  # Prepare to load image into memory with the func `cv2.imread`
+        self.lms_arr_list = []  # Load landmarks into memory in advance!
         self.mode = mode
+        self.preload = preload
         
-        for i in range(len(os.listdir(img_dir+"/full_body_img/"))):
+        for i in tqdm(range(len(os.listdir(img_dir+"/full_body_img/")))):
 
             img_path = os.path.join(img_dir+"/full_body_img/", str(i)+".jpg")
             lms_path = os.path.join(img_dir+"/landmarks/", str(i)+".lms")
-            self.img_path_list.append(img_path)
-            self.lms_path_list.append(lms_path)
+            if not self.preload:
+                self.img_path_list.append(img_path)
+                self.lms_path_list.append(lms_path)
+            else:
+                self.img_arr_list.append(cv2.imread(img_path))
+                self.lms_arr_list.append(self.get_coord_from_lms(lms_path))
         
         if self.mode == "wenet":
             self.stride = 4
@@ -32,9 +41,9 @@ class MyDataset(Dataset):
         else:
             raise ValueError("Only support mode wenet hubert!")
         self.audio_feats = self.audio_feats.astype(np.float32)
-        print(img_dir)
-        print(self.audio_feats.shape)
-        print(len(self.img_path_list))
+        print(f"img_dir:{img_dir}")
+        print(f"audio_feats:{self.audio_feats.shape}")
+        print(f"img_count:{len(self.img_path_list)}")
         
     def __len__(self):
         # return len(self.img_path_list)-1
@@ -93,8 +102,12 @@ class MyDataset(Dataset):
 
 
     def process_img(self, img, lms_path, img_ex, lms_path_ex, openface_lms_path=""):
-
-        xmin, ymin, xmax, ymax = self.get_coord_from_lms(lms_path)
+        if isinstance(lms_path, str):
+            xmin, ymin, xmax, ymax = self.get_coord_from_lms(lms_path)
+            xmin_ex, ymin_ex, xmax_ex, ymax_ex = self.get_coord_from_lms(lms_path_ex)
+        else:
+            xmin, ymin, xmax, ymax = lms_path
+            xmin_ex, ymin_ex, xmax_ex, ymax_ex = lms_path_ex
         crop_img = img[ymin:ymax, xmin:xmax]
         crop_img = cv2.resize(crop_img, (168, 168), cv2.INTER_AREA)
         img_real = crop_img[4:164, 4:164].copy()
@@ -116,8 +129,8 @@ class MyDataset(Dataset):
         # xmax = lms[15][0]
         # width = xmax - xmin
         # ymax = ymin + width
-        xmin, ymin, xmax, ymax = self.get_coord_from_lms(lms_path_ex)
-        crop_img = img_ex[ymin:ymax, xmin:xmax]
+        # xmin_ex, ymin_ex, xmax_ex, ymax_ex = self.get_coord_from_lms(lms_path_ex)
+        crop_img = img_ex[ymin_ex:ymax_ex, xmin_ex:xmax_ex]
         crop_img = cv2.resize(crop_img, (168, 168), cv2.INTER_AREA)
         img_real_ex = crop_img[4:164, 4:164].copy()
         
@@ -133,21 +146,27 @@ class MyDataset(Dataset):
         return img_concat_T, img_real_T
 
     def __getitem__(self, idx):
-        img = cv2.imread(self.img_path_list[idx])
-        lms_path = self.lms_path_list[idx]
-        
         ex_int = random.randint(0, self.__len__()-1)
-        img_ex = cv2.imread(self.img_path_list[ex_int])
-        lms_path_ex = self.lms_path_list[ex_int]
-        
-        img_concat_T, img_real_T = self.process_img(img, lms_path, img_ex, lms_path_ex)
-        audio_feat = self.get_audio_features(self.audio_feats, idx) 
-        
+
+        if not self.preload:
+            img = cv2.imread(self.img_path_list[idx])
+            lms_path_or_tuple = self.lms_path_list[idx]
+
+            img_ex = cv2.imread(self.img_path_list[ex_int])
+            lms_path_or_tuple_ex = self.lms_path_list[ex_int]
+        else:
+            img = self.img_arr_list[idx]
+            img_ex = self.img_arr_list[ex_int]
+            lms_path_or_tuple = self.lms_arr_list[idx]
+            lms_path_or_tuple_ex = self.lms_arr_list[ex_int]
+        img_concat_T, img_real_T = self.process_img(img, lms_path_or_tuple, img_ex, lms_path_or_tuple_ex)
+        audio_feat = self.get_audio_features(self.audio_feats, idx)
+
         if self.mode == "wenet":
             audio_feat = audio_feat.reshape(128,16,32)  # (256,16,32)
         if self.mode == "hubert":
             audio_feat = audio_feat.reshape(32,32,32)
-        
+
         return img_concat_T, img_real_T, audio_feat
     
         
