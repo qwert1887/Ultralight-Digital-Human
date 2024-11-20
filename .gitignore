@@ -9,3 +9,8 @@ syncnet_checkpoint
 *.jpg
 data_utils/encoder.onnx
 __MACOSX
+*.trt
+*.onnx
+*.engine
+*.mp3
+.DS_Store
