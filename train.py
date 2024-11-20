@@ -94,7 +94,9 @@ def train(net, epoch, batch_size, lr):
         dataset_list.append(dataset)
     start_epoch = 0
     # start_lr = lr
-    avg_loss = 0.0
+    best_loss = 10
+    best_epoch = 0
+    loss_increase_count = 0
     optimizer = optim.Adam(net.parameters(), lr=lr)
     if args.resume_ckpt != "":
         if not os.path.isfile(args.resume_ckpt):
@@ -109,9 +111,12 @@ def train(net, epoch, batch_size, lr):
         if 'optimizer' in checkpoint_dict:
             optimizer.load_state_dict(checkpoint_dict['optimizer'])
             print("[INFO] loaded optimizer.")
-        start_epoch = checkpoint_dict['epoch']
-        lr = checkpoint_dict['lr']
-        avg_loss = checkpoint_dict['avg_loss']
+        if "epoch" in checkpoint_dict:
+            start_epoch = checkpoint_dict['epoch']
+        if "lr" in checkpoint_dict:
+            lr = checkpoint_dict['lr']
+        if "avg_loss" in checkpoint_dict:
+            best_loss = checkpoint_dict['avg_loss']
     criterion = nn.L1Loss()  # default
     # criterion = nn.MSELoss()
     # criterion = nn.SmoothL1Loss()
@@ -163,6 +168,16 @@ def train(net, epoch, batch_size, lr):
                 "model": net.state_dict(),
                 "optimizer": optimizer.state_dict()}
             torch.save(state, os.path.join(save_dir, str(e)+'.pth'))
+            if average_loss < best_loss:
+                best_loss = average_loss
+                best_epoch = e
+                torch.save(net.state_dict(), os.path.join(save_dir, 'best.pth'))
+            else:
+                loss_increase_count += 1
+                if loss_increase_count > 5:  # 损失连续n次不再收敛.停止训练
+                    print(f"Training finished automatically! best loss: {best_loss}, best epoch: {best_epoch}")
+                    break
+
         if args.see_res:
             net.eval()
             img_concat_T, img_real_T, audio_feat = dataset.__getitem__(random.randint(0, dataset.__len__()))

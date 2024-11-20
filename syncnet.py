@@ -235,6 +235,9 @@ def train(save_dir, dataset_dir, mode, resume_cpkt=""):
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad],
                            lr=0.001)
     start_epoch = 0
+    best_loss = 10
+    best_epoch = 0
+    loss_increase_count = 0
     if resume_cpkt != "":
         # print(torch.load(os.path.join(save_dir, resume_cpkt)))
         cpkt_state_dict = torch.load(resume_cpkt)
@@ -250,6 +253,8 @@ def train(save_dir, dataset_dir, mode, resume_cpkt=""):
                 param_group['lr'] = lr
         if "epoch" in cpkt_state_dict:
             start_epoch = cpkt_state_dict["epoch"]
+        if "avg_loss" in cpkt_state_dict:
+            best_loss = cpkt_state_dict["avg_loss"]
 
     for epoch in range(1, 51):
         epoch += start_epoch
@@ -270,13 +275,23 @@ def train(save_dir, dataset_dir, mode, resume_cpkt=""):
             loss_list.append(loss_value)
             p_bar.set_postfix(**{'loss': loss_value})
             p_bar.update(imgT.size(0))
-        p_bar.set_postfix(**{'loss': sum(loss_list) / len(loss_list)})
+        avg_loss = sum(loss_list) / len(loss_list)
+        p_bar.set_postfix(**{'loss': avg_loss})
         p_bar.close()
         # print(epoch, loss.item())
         if epoch % 5 == 0:
-            ckpt_state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict()}
+            ckpt_state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict(), "avg_loss": avg_loss}
             # torch.save(model.state_dict(), os.path.join(save_dir, str(epoch)+'.pth'))
             torch.save(ckpt_state, os.path.join(save_dir, str(epoch)+'.pth'))
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                best_epoch = epoch
+                torch.save(model.state_dict(), os.path.join(save_dir, 'best.pth'))
+            else:
+                loss_increase_count += 1
+                if loss_increase_count >= 5:  # 损失连续n次不再收敛.停止训练
+                    print(f"SyncNet Training finished automatically! best loss: {best_loss}, best epoch: {best_epoch}")
+                    break
 
             
     
