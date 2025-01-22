@@ -1,0 +1,13 @@
+tensorrt==8.6.1
+pycuda==2024.1.2
+onnxruntime-gpu==1.17.1
+librosa==0.10.2.post1
+soundfile==0.12.1
+numpy==1.26.4
+transformers==4.46.0
+opencv-python==4.10.0.84
+mkl==2024.0.0
+# 以下建议本地安装
+# torch @ file:///home/guaishou/Downloads/torch_torchvision/torch-2.1.2%2Bcu118-cp310-cp310-linux_x86_64.whl#sha256=60396358193f238888540f4a38d78485f161e28ec17fa445f0373b5350ef21f0
+# torchaudio @ file:///home/guaishou/Downloads/torch_torchvision/torchaudio-2.1.2%2Bcu118-cp310-cp310-linux_x86_64.whl#sha256=b39468862d34a3a89af4db333bc935a02525a509b2c8949f638f83eb6061da02
+# torchvision @ file:///home/guaishou/Downloads/torch_torchvision/torchvision-0.16.2%2Bcu118-cp310-cp310-linux_x86_64.whl#sha256=18470aef0bbde73f5a6a96135cd457f4d8be31f60be7ceae4ef5174f02f73add
