@@ -225,7 +225,7 @@ def cosine_loss(a, v, y):
     
 def train(save_dir, dataset_dir, mode, resume_cpkt=""):
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         
     train_dataset = Dataset(dataset_dir, mode=mode)
     train_data_loader = DataLoader(

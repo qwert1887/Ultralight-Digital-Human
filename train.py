@@ -83,7 +83,7 @@ def train(net, epoch, batch_size, lr):
             syncnet.load_state_dict(sync_dict_state)
     save_dir= args.save_dir
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
     dataloader_list = []
     dataset_list = []
     dataset_dir_list = [args.dataset_dir]

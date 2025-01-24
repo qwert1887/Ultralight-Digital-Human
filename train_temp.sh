@@ -1,7 +1,7 @@
 set -ex
 #character_id=0118_cyz_stand
 character_id=$1
-if [ -z "$character_id"];then
+if [ -z "$character_id" ];then
   echo "Usage: script.sh character_id"
   exit
 fi
