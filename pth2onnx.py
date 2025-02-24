@@ -1,4 +1,5 @@
 import os
+import sys
 
 from unet import Model
 import onnx
@@ -46,54 +47,78 @@ def check_onnx(torch_out, torch_in, audio):
         print("Test failed,but maybe it's OK.you can try use the generated model!!")
     print("Exported model has been tested with ONNXRuntime, and the result looks good!")
 
-# python -m onnxsim network.onnx networkfp32.onnx
-# ckpt_path = "checkpoints/checkpoint_zyz_0128/200.pth"
-ckpt_path = "checkpoints/0120_cyz/best.pth"
-# ckpt_path = "/home/guaishou/PycharmProjects/livetalking/ultralight_dh/checkpoints/zyz/200.pth"
-ckpt_dir = os.path.dirname(ckpt_path)
-onnx_path = os.path.join(ckpt_dir, "model.onnx")
-onnx_path_fp32 = os.path.join(ckpt_dir, "model_fp32.onnx")
-engine_path = os.path.join(ckpt_dir, "model.engine")
-net_state_dict = torch.load(ckpt_path)
-if "model" in net_state_dict:
-    net_state_dict = net_state_dict["model"]
-net = Model(6).eval()
-net.load_state_dict(net_state_dict)
-# fp32 = True
-# if fp32:
-#     net.float()
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# img = torch.zeros([1, 6, 160, 160], dtype=torch.float32).to(device).contiguous()
-# audio = torch.zeros([1, 32, 32, 32], dtype=torch.float32).to(device).contiguous()
-img = torch.zeros([1, 6, 160, 160], dtype=torch.float32).contiguous()
-audio = torch.zeros([1, 32, 32, 32], dtype=torch.float32).contiguous()
 
-input_dict = {"input": img, "audio": audio}
-dynamic = True
-if dynamic:
-    dynamic_axes = {
-        "input": {0: "batch_size"},
-        "audio": {0: "batch_size"}
-    }
-else:
-    dynamic_axes = None
+def main(ckpt_path):
+    # ckpt_path = "/home/guaishou/PycharmProjects/livetalking/ultralight_dh/checkpoints/zyz/200.pth"
+    ckpt_dir = os.path.dirname(ckpt_path)
+    onnx_path = os.path.join(ckpt_dir, "model.onnx")
+    onnx_path_fp32 = os.path.join(ckpt_dir, "model_fp32.onnx")
+    engine_path = os.path.join(ckpt_dir, "model.engine")
+    net_state_dict = torch.load(ckpt_path)
+    if "model" in net_state_dict:
+        net_state_dict = net_state_dict["model"]
+    net = Model(6).eval()
+    net.load_state_dict(net_state_dict)
+    # fp32 = True
+    # if fp32:
+    #     net.float()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # img = torch.zeros([1, 6, 160, 160], dtype=torch.float32).to(device).contiguous()
+    # audio = torch.zeros([1, 32, 32, 32], dtype=torch.float32).to(device).contiguous()
+    img = torch.zeros([1, 6, 160, 160], dtype=torch.float32).contiguous()
+    audio = torch.zeros([1, 32, 32, 32], dtype=torch.float32).contiguous()
 
-with torch.no_grad():
-    torch_out = net(img, audio)
-    # print(torch_out.shape)
-    torch.onnx.export(
-        net,
-        (img, audio),
-        onnx_path,
-        input_names=['input', "audio"],
-        output_names=['output'],
-        dynamic_axes=dynamic_axes,
-        # example_outputs=torch_out,
-        do_constant_folding=False,
-        opset_version=16,
-        export_params=True
-    )
-# 同步生成int32格式。为了tensorrt使用
-os.system(f"python -m onnxsim {onnx_path} {onnx_path_fp32} --no-large-tensor")
-convert2trt(onnx_path_fp32, engine_path)
-check_onnx(torch_out, img, audio)
+    input_dict = {"input": img, "audio": audio}
+    dynamic = True
+    if dynamic:
+        dynamic_axes = {
+            "input": {0: "batch_size"},
+            "audio": {0: "batch_size"}
+        }
+    else:
+        dynamic_axes = None
+
+    with torch.no_grad():
+        torch_out = net(img, audio)
+        # print(torch_out.shape)
+        torch.onnx.export(
+            net,
+            (img, audio),
+            onnx_path,
+            input_names=['input', "audio"],
+            output_names=['output'],
+            dynamic_axes=dynamic_axes,
+            # example_outputs=torch_out,
+            do_constant_folding=False,
+            opset_version=16,
+            export_params=True
+        )
+    # 同步生成int32格式。为了tensorrt使用
+    os.system(f"python -m onnxsim {onnx_path} {onnx_path_fp32} --no-large-tensor")
+    convert2trt(onnx_path_fp32, engine_path)
+    check_onnx(torch_out, img, audio)
+
+
+if __name__ == '__main__':
+    # python -m onnxsim network.onnx networkfp32.onnx
+    # ckpt_path = "checkpoints/checkpoint_zyz_0128/200.pth"
+    # ckpt_path = "checkpoints/0118_zyy_stand/best.pth"
+    checkpoints_path = "./checkpoints"
+    if not os.path.exists(checkpoints_path):
+        print(f"Checkpoint directory {checkpoints_path} doesn't exist")
+        sys.exit(1)
+    for model_id in os.listdir(checkpoints_path):
+        model_ckpt_dir = os.path.join(checkpoints_path, model_id)
+        if not os.path.isdir(model_ckpt_dir):
+            print(f"The specified checkpoint directory {model_ckpt_dir} doesn't exist")
+            continue
+        train_pth = os.path.join(model_ckpt_dir, "best.pth")
+        if not os.path.isfile(train_pth):
+            print(f"Did you forget the pth file name? `200.pth` has been replaced by `best.pth`! The specified checkpoint {train_pth} doesn't exist")
+            continue
+        onnx_path = os.path.join(model_ckpt_dir, "model.onnx")
+        if not os.path.isfile(onnx_path):
+            ckpt_path = train_pth
+            main(ckpt_path)
+        else:
+            print(f"The specified checkpoint {onnx_path} has exist!")

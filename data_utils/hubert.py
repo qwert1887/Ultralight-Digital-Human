@@ -1,7 +1,7 @@
 import os
 import sys
 
-import resampy
+# import resampy
 
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from transformers import Wav2Vec2Processor, HubertModel

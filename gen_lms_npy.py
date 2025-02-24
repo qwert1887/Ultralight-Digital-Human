@@ -16,6 +16,10 @@ def gen_lms_pickle(dataset_dir):
 
     video_path = os.path.join(dataset_dir, '1080p.mp4')  # 数据下面有1080p的训练视频，最好是无声视频
     lms_dir = os.path.join(dataset_dir, 'landmarks')
+    cache_path = f"{os.path.join(dataset_dir, 'lms_cache_data.pkl')}"
+    if not os.path.isdir(lms_dir) or os.path.isfile(cache_path):
+        print(f"Landmarks dir {lms_dir} not found OR {cache_path} is exist!")
+        return
     # img = cv2.imread(img_path)
     face_dict = {}
     crop_face_ori_list = []
@@ -54,7 +58,7 @@ def gen_lms_pickle(dataset_dir):
     # face_dict['concat_face_mask'] = crop_face_list
     # face_dict['crop_face_ori'] = crop_face_ori_list
     face_dict['coord_list'] = coord_list
-    with open(f"{os.path.join(dataset_dir, 'lms_cache_data.pkl')}", "wb") as f:
+    with open(cache_path, "wb") as f:
         pickle.dump(face_dict, f)
 
 
@@ -125,5 +129,13 @@ def load_pickle(file_path):
 if __name__ == '__main__':
     # gen_img_concat_mask("1080p.mp4")
     # load_pickle("cache_data.pkl")
-    dataset_dir = './dataset/0120_zyy'
-    gen_lms_pickle(dataset_dir)
+    # dataset_dir = './dataset/0123_girl_a_sit'
+    # gen_lms_pickle(dataset_dir)
+    dataset_dir = './dataset'
+    for file_dir in os.listdir(dataset_dir):
+        print(file_dir)
+        spec_dataset = os.path.join(dataset_dir, file_dir)
+        if not os.path.isdir(spec_dataset):
+            print(f"{spec_dataset} 非文件目录，跳过!")
+            continue
+        gen_lms_pickle(spec_dataset)
