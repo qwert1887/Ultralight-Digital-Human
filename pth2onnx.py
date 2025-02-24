@@ -112,9 +112,17 @@ if __name__ == '__main__':
         if not os.path.isdir(model_ckpt_dir):
             print(f"The specified checkpoint directory {model_ckpt_dir} doesn't exist")
             continue
-        train_pth = os.path.join(model_ckpt_dir, "best.pth")
-        if not os.path.isfile(train_pth):
-            print(f"Did you forget the pth file name? `200.pth` has been replaced by `best.pth`! The specified checkpoint {train_pth} doesn't exist")
+        pth_exist = False
+        for ckpt_id in ["best.pth", "200.pth", "190.pth"]:
+            train_pth = os.path.join(model_ckpt_dir, ckpt_id)
+            if not os.path.isfile(train_pth):
+                # print(f"Did you forget the pth file name? `200.pth` has been replaced by `best.pth`! The specified checkpoint {train_pth} doesn't exist")
+                continue
+            else:
+                pth_exist = True
+                break
+        if not pth_exist:
+            print(f"Can't find the `best.pth`、`200.pth` or `190.pth` file(s). The specified checkpoint {train_pth} doesn't exist")
             continue
         onnx_path = os.path.join(model_ckpt_dir, "model.onnx")
         if not os.path.isfile(onnx_path):
