@@ -127,6 +127,10 @@ if __name__ == '__main__':
         onnx_path = os.path.join(model_ckpt_dir, "model.onnx")
         if not os.path.isfile(onnx_path):
             ckpt_path = train_pth
-            main(ckpt_path)
+            try:
+                main(ckpt_path)
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
         else:
             print(f"The specified checkpoint {onnx_path} has exist!")
